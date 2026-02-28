@@ -1,0 +1,349 @@
+{
+  "info": {
+    "_postman_id": "f1a2b3c4-d5e6-7890-abcd-ef1234567890",
+    "name": "Flights Live Pricing — Local Stack",
+    "description": "End-to-end testing for the flights-live-pricing-e2e-stack running locally.\n\n## Prerequisites\n- All 4 services running (`local-testing/start-local-stack.sh`)\n- Redis running on port 6380\n- `mshell login` + `sudo mshell proxy` active\n\n## How to use\n1. Edit the **collection variables** at the top to configure your search (origin, destination, dates, market, etc.)\n2. Run **Create Search** — the `session_id` is automatically saved to the `session_id` variable\n3. Run **Poll Search** one or more times until all agents are complete\n\n## Routes & Markets\nCommon origin/destination IATA codes: EDI, LHR, CDG, JFK, SYD, DXB\nMarkets: UK, US, DE, AU — Currency should match (GBP, USD, EUR, AUD)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5020",
+      "description": "Conductor base URL. Change port if running on a different host.",
+      "type": "string"
+    },
+    {
+      "key": "channel_id",
+      "value": "website",
+      "description": "X-Skyscanner-ChannelId header value. Use 'website' for standard web requests.",
+      "type": "string"
+    },
+    {
+      "key": "market",
+      "value": "UK",
+      "description": "Market code (e.g. UK, US, DE, AU)",
+      "type": "string"
+    },
+    {
+      "key": "currency",
+      "value": "GBP",
+      "description": "Currency code (e.g. GBP, USD, EUR, AUD)",
+      "type": "string"
+    },
+    {
+      "key": "locale",
+      "value": "en-GB",
+      "description": "Locale (e.g. en-GB, en-US, de-DE)",
+      "type": "string"
+    },
+    {
+      "key": "adults",
+      "value": "1",
+      "description": "Number of adult passengers (integer, e.g. 1, 2)",
+      "type": "string"
+    },
+    {
+      "key": "cabin_class",
+      "value": "economy",
+      "description": "Cabin class: economy | premium_economy | business | first",
+      "type": "string"
+    },
+    {
+      "key": "origin",
+      "value": "EDI",
+      "description": "Origin airport IATA code (e.g. EDI, LHR, JFK)",
+      "type": "string"
+    },
+    {
+      "key": "destination",
+      "value": "LHR",
+      "description": "Destination airport IATA code (e.g. LHR, CDG, SYD)",
+      "type": "string"
+    },
+    {
+      "key": "outbound_date",
+      "value": "2026-03-15",
+      "description": "Outbound flight date (YYYY-MM-DD). Use a future date.",
+      "type": "string"
+    },
+    {
+      "key": "return_date",
+      "value": "2026-03-22",
+      "description": "Return flight date for round-trip searches (YYYY-MM-DD). Must be after outbound_date.",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "",
+      "description": "Auto-populated by the Create Search request. Used by Poll Search.",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "One-way Search",
+      "description": "Single-leg flight search. Fires a Create to start a session, then Poll to retrieve live results.\n\nThe Create request automatically saves the session_id so Poll can use it immediately.",
+      "item": [
+        {
+          "name": "1. Create Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Has session_id', () => {",
+                  "    pm.expect(res.context).to.be.an('object');",
+                  "    pm.expect(res.context.session_id).to.be.a('string').with.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Has itineraries array', () => pm.expect(res.itineraries).to.be.an('array'));",
+                  "pm.test('Has agents array', () => pm.expect(res.agents).to.be.an('array'));",
+                  "",
+                  "// Auto-save session_id for use in Poll Search",
+                  "if (res.context && res.context.session_id) {",
+                  "    pm.collectionVariables.set('session_id', res.context.session_id);",
+                  "    console.log('✓ session_id saved: ' + res.context.session_id);",
+                  "    console.log('  itineraries: ' + (res.itineraries || []).length);",
+                  "    console.log('  agents: ' + (res.agents || []).length);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Skyscanner-ChannelId", "value": "{{channel_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"market\": \"{{market}}\",\n  \"currency\": \"{{currency}}\",\n  \"locale\": \"{{locale}}\",\n  \"adults\": {{adults}},\n  \"cabin_class\": \"{{cabin_class}}\",\n  \"legs\": [\n    {\n      \"origin\": \"{{origin}}\",\n      \"destination\": \"{{destination}}\",\n      \"date\": \"{{outbound_date}}\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/fps3/search",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "fps3", "search"]
+            },
+            "description": "Creates a new flight search session.\n\nOn success the `session_id` from `context.session_id` is automatically saved to the collection variable so you can immediately run **Poll Search** next."
+          }
+        },
+        {
+          "name": "2. Poll Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has itineraries', () => {",
+                  "    pm.expect(res.itineraries).to.be.an('array').with.length.above(0);",
+                  "});",
+                  "",
+                  "const agents = res.agents || [];",
+                  "const pending = agents.filter(a => a.update_status === 'pending').length;",
+                  "const complete = agents.length - pending;",
+                  "",
+                  "console.log('agents: ' + complete + '/' + agents.length + ' complete');",
+                  "console.log('itineraries: ' + (res.itineraries || []).length);",
+                  "",
+                  "if (pending === 0 && agents.length > 0) {",
+                  "    console.log('✓ All agents complete — no need to poll again');",
+                  "} else {",
+                  "    console.log('⏳ ' + pending + ' agent(s) still pending — poll again');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Skyscanner-ChannelId", "value": "{{channel_id}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/fps3/search/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "fps3", "search", "{{session_id}}"]
+            },
+            "description": "Polls for live pricing updates for the session created by **Create Search**.\n\nThe `session_id` variable is auto-populated by Create Search.\n\nKeep polling until the Console shows `✓ All agents complete`. Must be done within 60 seconds of the Create request, otherwise pending agents will time out."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Return Search",
+      "description": "Round-trip flight search with two legs: outbound and return.\n\nUses the same collection variables as One-way Search, plus `return_date` for the inbound leg.",
+      "item": [
+        {
+          "name": "1. Create Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Has session_id', () => {",
+                  "    pm.expect(res.context).to.be.an('object');",
+                  "    pm.expect(res.context.session_id).to.be.a('string').with.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Has itineraries array', () => pm.expect(res.itineraries).to.be.an('array'));",
+                  "pm.test('Has agents array', () => pm.expect(res.agents).to.be.an('array'));",
+                  "",
+                  "if (res.context && res.context.session_id) {",
+                  "    pm.collectionVariables.set('session_id', res.context.session_id);",
+                  "    console.log('✓ session_id saved: ' + res.context.session_id);",
+                  "    console.log('  itineraries: ' + (res.itineraries || []).length);",
+                  "    console.log('  agents: ' + (res.agents || []).length);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Skyscanner-ChannelId", "value": "{{channel_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"market\": \"{{market}}\",\n  \"currency\": \"{{currency}}\",\n  \"locale\": \"{{locale}}\",\n  \"adults\": {{adults}},\n  \"cabin_class\": \"{{cabin_class}}\",\n  \"legs\": [\n    {\n      \"origin\": \"{{origin}}\",\n      \"destination\": \"{{destination}}\",\n      \"date\": \"{{outbound_date}}\"\n    },\n    {\n      \"origin\": \"{{destination}}\",\n      \"destination\": \"{{origin}}\",\n      \"date\": \"{{return_date}}\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/fps3/search",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "fps3", "search"]
+            },
+            "description": "Creates a round-trip flight search session with two legs:\n- Leg 1: `{{origin}}` → `{{destination}}` on `{{outbound_date}}`\n- Leg 2: `{{destination}}` → `{{origin}}` on `{{return_date}}`\n\nThe `session_id` is automatically saved for the Poll request."
+          }
+        },
+        {
+          "name": "2. Poll Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has itineraries', () => {",
+                  "    pm.expect(res.itineraries).to.be.an('array').with.length.above(0);",
+                  "});",
+                  "",
+                  "const agents = res.agents || [];",
+                  "const pending = agents.filter(a => a.update_status === 'pending').length;",
+                  "const complete = agents.length - pending;",
+                  "",
+                  "console.log('agents: ' + complete + '/' + agents.length + ' complete');",
+                  "console.log('itineraries: ' + (res.itineraries || []).length);",
+                  "",
+                  "if (pending === 0 && agents.length > 0) {",
+                  "    console.log('✓ All agents complete — no need to poll again');",
+                  "} else {",
+                  "    console.log('⏳ ' + pending + ' agent(s) still pending — poll again');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Skyscanner-ChannelId", "value": "{{channel_id}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/fps3/search/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "fps3", "search", "{{session_id}}"]
+            },
+            "description": "Polls for live pricing updates for the round-trip session created by **Create Search**.\n\nKeep polling until the Console shows `✓ All agents complete`. Must be done within 60 seconds of the Create request."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Checks",
+      "description": "Verify all 4 services are running and healthy before testing.",
+      "item": [
+        {
+          "name": "Conductor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5020/operations/healthcheck",
+              "host": ["http://localhost"],
+              "port": "5020",
+              "path": ["operations", "healthcheck"]
+            },
+            "description": "Conductor healthcheck (HTTP port 5020)"
+          }
+        },
+        {
+          "name": "FlightsPricingSvc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5030/operations/healthcheck",
+              "host": ["http://localhost"],
+              "port": "5030",
+              "path": ["operations", "healthcheck"]
+            },
+            "description": "FPS healthcheck (HTTP port 5030)"
+          }
+        },
+        {
+          "name": "QuoteRetrievalService",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5050/operations/healthcheck",
+              "host": ["http://localhost"],
+              "port": "5050",
+              "path": ["operations", "healthcheck"]
+            },
+            "description": "QRS healthcheck (HTTP port 5050)"
+          }
+        },
+        {
+          "name": "ItineraryConstruction",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5040/operations/healthcheck",
+              "host": ["http://localhost"],
+              "port": "5040",
+              "path": ["operations", "healthcheck"]
+            },
+            "description": "IC healthcheck (HTTP port 5040)"
+          }
+        }
+      ]
+    }
+  ]
+}
