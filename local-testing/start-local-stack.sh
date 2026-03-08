@@ -42,14 +42,14 @@ echo ""
 # Start ItineraryConstruction
 echo "[1/4] Starting ItineraryConstruction..."
 cd "$PARENT_DIR/itinerary-construction"
-./gradlew run > /tmp/ic.log 2>&1 &
+java -jar build/libs/microservice-shell-java.jar server dev.yml > /tmp/ic.log 2>&1 &
 IC_PID=$!
 echo "      Started (PID: $IC_PID) - Logs: /tmp/ic.log"
 
 # Start QuoteRetrievalService
 echo "[2/4] Starting QuoteRetrievalService..."
 cd "$PARENT_DIR/quoteretrievalservice"
-./gradlew run > /tmp/qrs.log 2>&1 &
+java -jar build/libs/microservice-shell-java.jar server dev.yml > /tmp/qrs.log 2>&1 &
 QRS_PID=$!
 echo "      Started (PID: $QRS_PID) - Logs: /tmp/qrs.log"
 
@@ -62,11 +62,7 @@ sleep 15
 echo ""
 echo "[3/4] Starting FlightsPricingSvc..."
 cd "$PARENT_DIR/flights-pricing-svc"
-FPS_QUOTE_RETRIEVAL_BASE_URL=$FPS_QUOTE_RETRIEVAL_BASE_URL \
-FPS_QUOTE_RETRIEVAL_PORT=$FPS_QUOTE_RETRIEVAL_PORT \
-FPS_ITINERARY_CONSTRUCTION_BASE_URL_GRPC=$FPS_ITINERARY_CONSTRUCTION_BASE_URL_GRPC \
-FPS_ITINERARY_CONSTRUCTION_PORT=$FPS_ITINERARY_CONSTRUCTION_PORT \
-./gradlew run > /tmp/fps.log 2>&1 &
+java -jar build/libs/microservice-shell-java.jar server dev.yml > /tmp/fps.log 2>&1 &
 FPS_PID=$!
 echo "      Started (PID: $FPS_PID) - Logs: /tmp/fps.log"
 
@@ -79,10 +75,7 @@ sleep 15
 echo ""
 echo "[4/4] Starting Conductor..."
 cd "$PARENT_DIR/conductor"
-FPS_BASE_URL=$FPS_BASE_URL \
-FPS_PORT=$FPS_PORT \
-CONDUCTOR_STORE_URL=$CONDUCTOR_STORE_URL \
-./gradlew run > /tmp/conductor.log 2>&1 &
+java -jar build/libs/microservice-shell-java.jar server dev.yml > /tmp/conductor.log 2>&1 &
 CONDUCTOR_PID=$!
 echo "      Started (PID: $CONDUCTOR_PID) - Logs: /tmp/conductor.log"
 

@@ -284,6 +284,140 @@
       ]
     },
     {
+      "name": "Payment Price Options (ICN→SIN)",
+      "description": "Verifies the payment_price_options field introduced by the add-payment-price-options change.\n\nUses KR/KRW market with ICN→SIN route — Quote Service is known to return payment_price_options for this combination.\n\n## How to use\n1. Run **1. Create Search** — session_id is auto-saved\n2. Run **2. Poll Search** — the test script checks that at least one pricing item contains payment_price_options with all required fields (provider_name, payment_discount, final_price)",
+      "item": [
+        {
+          "name": "1. Create Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Has session_id', () => {",
+                  "    pm.expect(res.context).to.be.an('object');",
+                  "    pm.expect(res.context.session_id).to.be.a('string').with.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Has itineraries array', () => pm.expect(res.itineraries).to.be.an('array'));",
+                  "pm.test('Has agents array', () => pm.expect(res.agents).to.be.an('array'));",
+                  "",
+                  "if (res.context && res.context.session_id) {",
+                  "    pm.collectionVariables.set('session_id', res.context.session_id);",
+                  "    console.log('✓ session_id saved: ' + res.context.session_id);",
+                  "    console.log('  itineraries: ' + (res.itineraries || []).length);",
+                  "    console.log('  agents: ' + (res.agents || []).length);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Skyscanner-ChannelId", "value": "website" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"market\": \"KR\",\n  \"currency\": \"KRW\",\n  \"locale\": \"ko-KR\",\n  \"adults\": 1,\n  \"cabin_class\": \"economy\",\n  \"legs\": [\n    {\n      \"origin\": \"ICN\",\n      \"destination\": \"SIN\",\n      \"date\": \"2026-04-15\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/fps3/search",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "fps3", "search"]
+            },
+            "description": "Creates a KR/KRW search for ICN→SIN.\n\nQuote Service returns payment_price_options (Korean payment card providers) for this route and market. The session_id is auto-saved for the Poll request."
+          }
+        },
+        {
+          "name": "2. Poll Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has itineraries', () => {",
+                  "    pm.expect(res.itineraries).to.be.an('array').with.length.above(0);",
+                  "});",
+                  "",
+                  "const agents = res.agents || [];",
+                  "const pending = agents.filter(a => a.update_status === 'pending').length;",
+                  "console.log('agents: ' + (agents.length - pending) + '/' + agents.length + ' complete');",
+                  "console.log('itineraries: ' + (res.itineraries || []).length);",
+                  "",
+                  "if (pending === 0 && agents.length > 0) {",
+                  "    console.log('✓ All agents complete — no need to poll again');",
+                  "} else {",
+                  "    console.log('⏳ ' + pending + ' agent(s) still pending — poll again');",
+                  "}",
+                  "",
+                  "// Collect all payment_price_options entries",
+                  "const itemsWithPPO = [];",
+                  "for (const itin of res.itineraries || []) {",
+                  "    for (const opt of itin.pricing_options || []) {",
+                  "        for (const item of opt.items || []) {",
+                  "            if (item.payment_price_options && item.payment_price_options.length > 0) {",
+                  "                itemsWithPPO.push(item.payment_price_options);",
+                  "            }",
+                  "        }",
+                  "    }",
+                  "}",
+                  "",
+                  "pm.test('payment_price_options present in at least one pricing item', () => {",
+                  "    pm.expect(itemsWithPPO.length).to.be.above(0,",
+                  "        'Expected payment_price_options in at least one item — got 0. Is the stack running the updated code?');",
+                  "});",
+                  "",
+                  "if (itemsWithPPO.length > 0) {",
+                  "    console.log('✓ payment_price_options found in ' + itemsWithPPO.length + ' pricing item(s)');",
+                  "    const example = itemsWithPPO[0][0];",
+                  "    console.log('  Example entry: ' + JSON.stringify(example));",
+                  "",
+                  "    pm.test('Each payment option has provider_name', () => {",
+                  "        itemsWithPPO.flat().forEach(o => pm.expect(o).to.have.property('provider_name'));",
+                  "    });",
+                  "    pm.test('Each payment option has payment_discount', () => {",
+                  "        itemsWithPPO.flat().forEach(o => pm.expect(o).to.have.property('payment_discount'));",
+                  "    });",
+                  "    pm.test('Each payment option has final_price', () => {",
+                  "        itemsWithPPO.flat().forEach(o => pm.expect(o).to.have.property('final_price'));",
+                  "    });",
+                  "} else {",
+                  "    console.warn('WARNING: No payment_price_options found — poll again or check service logs');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Skyscanner-ChannelId", "value": "website" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/fps3/search/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "fps3", "search", "{{session_id}}"]
+            },
+            "description": "Polls the ICN→SIN session and verifies payment_price_options.\n\nThe test script checks:\n- At least one pricing item has payment_price_options\n- Every entry contains provider_name, payment_discount, and final_price\n\nMust be run within 60 seconds of Create Search."
+          }
+        }
+      ]
+    },
+    {
       "name": "Health Checks",
       "description": "Verify all 4 services are running and healthy before testing.",
       "item": [
